@@ -1,0 +1,10 @@
+[server]
+headless = true
+
+[theme]
+base = "dark"
+primaryColor = "#ff4b4b"
+
+[theme.sidebar]
+backgroundColor = "#262730"
+textColor = "#ffffff"

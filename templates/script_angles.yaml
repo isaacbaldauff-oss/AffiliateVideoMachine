@@ -1,0 +1,101 @@
+angles:
+  problem_solution:
+    title: "{product_name}: problem-solution short"
+    body: |
+      Disclosure: This video may contain affiliate links, which means I may earn a commission at no extra cost to you.
+
+      Hook:
+      If {category} has been annoying lately, this is the kind of product I would test first.
+
+      Setup:
+      Show the everyday problem in one quick shot. Keep it honest and specific.
+
+      Product beat:
+      Bring in {product_name} from {platform}. Point out the main use case, the current price context ({price}), and the rating context ({rating}) without making promises.
+
+      Demo:
+      Film one clear before-use moment, one in-use moment, and one final result shot.
+
+      CTA:
+      If it fits your routine, check the product link and compare it with your needs before buying.
+
+  feature_breakdown:
+    title: "{product_name}: feature breakdown short"
+    body: |
+      Disclosure: This video may contain affiliate links, which means I may earn a commission at no extra cost to you.
+
+      Hook:
+      Three details I would look at before buying {product_name}.
+
+      Feature 1:
+      Show the most visual feature and explain why it matters in plain language.
+
+      Feature 2:
+      Show the size, texture, included parts, or setup steps so viewers know what arrives.
+
+      Feature 3:
+      Share one practical tradeoff from the notes: {notes}
+
+      CTA:
+      Use the link to review the specs, price, and recent buyer feedback for yourself.
+
+  gift_idea:
+    title: "{product_name}: gift idea short"
+    body: |
+      Disclosure: This video may contain affiliate links, which means I may earn a commission at no extra cost to you.
+
+      Hook:
+      This could be a useful gift idea for someone who likes {category}.
+
+      Gift context:
+      Show the product as it would be opened, held, or used for the first time.
+
+      Why it works:
+      Explain who it is best suited for and who should probably skip it.
+
+      Price context:
+      Mention that the listed price is {price} and encourage viewers to check the current listing.
+
+      CTA:
+      Save it for your next gift search or use the link to compare options.
+
+  life_easier:
+    title: "{product_name}: things that make life easier short"
+    body: |
+      Disclosure: This video may contain affiliate links, which means I may earn a commission at no extra cost to you.
+
+      Hook:
+      Small things that make daily life easier: {product_name}.
+
+      Everyday scene:
+      Start with the normal task before the product appears.
+
+      Use case:
+      Show the product solving one narrow, realistic job in under ten seconds.
+
+      Proof point:
+      Reference the rating context ({rating}) and review count ({review_count}) as social context, not as a guarantee.
+
+      CTA:
+      Check the details through the link and decide if it belongs in your setup.
+
+  quick_demo:
+    title: "{product_name}: quick demo concept"
+    body: |
+      Disclosure: This video may contain affiliate links, which means I may earn a commission at no extra cost to you.
+
+      Hook:
+      Quick demo of {product_name} in under 30 seconds.
+
+      Shot list:
+      1. Product in hand or on the surface.
+      2. Close-up of the key feature.
+      3. Real use in the intended setting.
+      4. One honest limitation or consideration.
+      5. Final product shot with the link prompt.
+
+      Voiceover:
+      Here is what it looks like, how I would use it, and what I would check before buying.
+
+      CTA:
+      Open the link for current specs, pricing, and recent reviews.

@@ -1,0 +1,32 @@
+:root {
+  --avm-green: #1f7a5b;
+  --avm-blue: #265d8f;
+  --avm-ink: #17212b;
+  --avm-muted: #667085;
+}
+
+.block-container {
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+
+[data-testid="stSidebar"] {
+  border-right: 1px solid #e6e8ec;
+}
+
+h1, h2, h3 {
+  letter-spacing: 0;
+}
+
+div[data-testid="stMetric"] {
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  background: #ffffff;
+}
+
+.stButton > button,
+.stFormSubmitButton > button {
+  border-radius: 6px;
+  border-color: #c9d3df;
+}

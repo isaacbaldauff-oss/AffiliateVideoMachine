@@ -1,0 +1,2 @@
+"""AffiliateVideoMachine application package."""
+
