@@ -104,15 +104,20 @@ def build_conversion_media_plan(
         },
         "guardrails": [
             "Include affiliate disclosure.",
-            "Avoid medical, guaranteed, official, cheapest, before-and-after, cure, weight loss, and pain relief claims.",
+            "Avoid medical, guaranteed, official, cheapest, cure, weight loss, pain relief, and unrealistic transformation claims.",
             "Do not imply results that are not visible or supported by provided product metadata.",
         ],
     }
 
 
-def build_orchestrated_ai_prompt(media_plan: Mapping[str, Any], product: Mapping[str, Any], script: Mapping[str, Any]) -> str:
+def build_orchestrated_ai_prompt(
+    media_plan: Mapping[str, Any],
+    product: Mapping[str, Any],
+    script: Mapping[str, Any],
+    target_seconds: int | None = None,
+) -> str:
     """Build a provider prompt from the conversion media plan."""
-    base_prompt = build_ai_presenter_prompt(product, script)
+    base_prompt = build_ai_presenter_prompt(product, script, target_seconds=target_seconds)
     claims = media_plan.get("commercial_claims", {})
     creative = media_plan.get("creative_direction", {})
     strategy = media_plan.get("conversion_strategy", {})
@@ -184,20 +189,21 @@ def run_autonomous_media_pipeline(
     ]
     messages.append(f"Normalized {len(normalized_assets)} image reference(s).")
 
+    ai_config = config.get("ai_video", {})
+    if not isinstance(ai_config, dict):
+        ai_config = {}
+    ai_duration = max(1, min(10, int(ai_config.get("duration", 5))))
+    render_config = config.get("video_rendering", {})
+    if not isinstance(render_config, dict):
+        render_config = {}
+
     _progress(progress_callback, 0.38, "Generating conversion media plan")
     media_plan = build_conversion_media_plan(product, script, commercial_metadata, normalized_assets)
     plan_path = export_dir / "conversion_media_plan.json"
     plan_path.write_text(json.dumps(media_plan, indent=2), encoding="utf-8")
-    ai_prompt = build_orchestrated_ai_prompt(media_plan, product, script)
+    ai_prompt = build_orchestrated_ai_prompt(media_plan, product, script, target_seconds=ai_duration)
     prompt_path = export_dir / "orchestrated_ai_presenter_prompt.txt"
     prompt_path.write_text(ai_prompt, encoding="utf-8")
-
-    ai_config = config.get("ai_video", {})
-    if not isinstance(ai_config, dict):
-        ai_config = {}
-    render_config = config.get("video_rendering", {})
-    if not isinstance(render_config, dict):
-        render_config = {}
 
     video_path: Path | None = None
     status = "local_rendered"

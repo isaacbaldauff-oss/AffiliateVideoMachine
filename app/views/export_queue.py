@@ -268,7 +268,8 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
 
     st.subheader("AI presenter video")
     st.write(
-        "Generate a fresh AI video of a presenter holding and talking about the product, using product images as references."
+        "Generate a fresh TikTok-style UGC video using product reference images. "
+        "Keep tests short; production-length ads can be stitched from multiple clips later."
     )
     token_help = f"Uses the `{token_env}` environment variable when set. You can paste a token here for this run only."
     pasted_token = st.text_input("Replicate API token", value="", type="password", help=token_help)
@@ -295,7 +296,7 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
 
     ai_prompt = ""
     if selected_product and selected_script:
-        ai_prompt = build_ai_presenter_prompt(selected_product, selected_script)
+        ai_prompt = build_ai_presenter_prompt(selected_product, selected_script, target_seconds=ai_duration)
         ai_prompt = st.text_area("AI presenter prompt", value=ai_prompt, height=260)
     else:
         st.info("This queue item needs a linked product and script before AI video generation.")

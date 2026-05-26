@@ -94,11 +94,15 @@ streamlit run app\main.py
 
 The default provider model is `xai/grok-imagine-r2v`, which accepts 1-7 reference images, a prompt, duration, aspect ratio, and resolution. Generated videos are saved into the selected export package.
 
+The AI prompt builder is tuned for high-retention TikTok Shop UGC: visual hook, clear product reveal, natural use/application, believable result, and final product call-to-action. Hair products such as sea salt spray use a specific sequence for flat hair, spray application, scrunch styling, and realistic textured result.
+
 ### AI cost controls
 
 The app does not generate Replicate videos in the background. A paid AI video job only starts after you click an AI generation button and approve the paid-generation checkbox.
 
 The default test clip length is 5 seconds. The default cost estimate is `$0.05` per output second, so the first test run is estimated around `$0.25`. Change the estimate in Settings if your selected model's pricing changes.
+
+For production ads around 20-30 seconds, generate and review short clips first, then stitch multiple approved clips in a later editing step. The first paid test should stay short.
 
 If a queue item already has an AI-rendered MP4, the app blocks accidental regeneration unless you explicitly allow a second paid generation for that item.
 

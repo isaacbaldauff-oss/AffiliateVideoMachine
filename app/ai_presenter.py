@@ -62,19 +62,98 @@ def _script_summary(script_text: str, max_chars: int = 650) -> str:
     return shorten(" ".join(lines), width=max_chars, placeholder="...")
 
 
-def build_ai_presenter_prompt(product: Mapping[str, Any], script: Mapping[str, Any]) -> str:
+def _is_hair_product(product_name: str, category: str, notes: str) -> bool:
+    """Return whether the product should use the hair styling creative sequence."""
+    haystack = f"{product_name} {category} {notes}".lower()
+    hair_terms = ["hair", "sea salt", "texture spray", "styling spray", "waves", "volume", "roots"]
+    return any(term in haystack for term in hair_terms)
+
+
+def _duration_direction(target_seconds: int | None) -> str:
+    """Describe pacing expectations for the selected test or production duration."""
+    if target_seconds is None:
+        return "Use fast TikTok pacing with quick visual beats."
+    if target_seconds <= 6:
+        return (
+            f"This is a short {target_seconds}-second test clip. Compress the story into 4-5 quick micro-moments: "
+            "problem hook, product reveal, use/application, result, final product shot."
+        )
+    if target_seconds <= 10:
+        return (
+            f"This is a {target_seconds}-second test ad. Use quick cuts every 1-2 seconds and show the core transformation clearly."
+        )
+    return "For a production ad, target 20-30 seconds with quick cuts every 2-4 seconds."
+
+
+def _hair_product_sequence(product_name: str, target_seconds: int | None) -> str:
+    """Return a high-retention sequence for hair styling products."""
+    if target_seconds is not None and target_seconds <= 6:
+        return f"""
+Scene sequence for this short test:
+1. Instant hook: close-up of flat, lifeless hair in a bathroom mirror, creator looks unimpressed for a split second.
+2. Product reveal: {product_name} bottle in hand, label facing camera, product fills the frame.
+3. Application: spray into roots and mid-lengths, then immediately scrunch/tousle with fingers.
+4. Result: hair looks fuller, textured, beachy, and believable. Show confident mirror check.
+5. End frame: product held next to styled hair with a clean call-to-action visual.
+""".strip()
+    return f"""
+Scene sequence:
+1. Opening hook: close-up of flat, lifeless hair before use. Creator looks in the mirror and seems slightly unimpressed.
+2. Product reveal: show {product_name} clearly in hand, label facing camera, clean close-up shot.
+3. Application: person sprays into damp or dry hair, focusing on roots and mid-lengths.
+4. Styling: person scrunches hair with fingers, tousles naturally, and lightly styles it.
+5. Transformation: hair gains visible volume, texture, and beachy waves. The change is noticeable but realistic.
+6. Result shot: confident person checking hair in the mirror, hair looks fuller, textured, and effortless.
+7. Final product shot: product held next to styled hair with clean lighting and a strong visual call to action.
+""".strip()
+
+
+def _general_product_sequence(product_name: str, category: str, target_seconds: int | None) -> str:
+    """Return a conversion-oriented sequence for non-hair products."""
+    if target_seconds is not None and target_seconds <= 6:
+        return f"""
+Scene sequence for this short test:
+1. Instant hook: show the everyday problem this {category} product solves.
+2. Product reveal: hold {product_name} close to camera, label or main shape clearly visible.
+3. Use moment: show the product being used naturally by a real person.
+4. Result: show the practical improvement without exaggerated claims.
+5. End frame: product in hand with a clear visual call to action.
+""".strip()
+    return f"""
+Scene sequence:
+1. Opening hook: show the problem or annoying moment this product solves.
+2. Product reveal: show {product_name} clearly in hand, label or main product shape facing camera.
+3. Application/use: realistic person uses the product naturally in the intended setting.
+4. Detail close-up: show texture, mechanism, size, or action so the viewer understands the product.
+5. Result: show a believable, satisfying improvement.
+6. Final product shot: product held in clean lighting with a strong visual call to action.
+""".strip()
+
+
+def build_ai_presenter_prompt(
+    product: Mapping[str, Any],
+    script: Mapping[str, Any],
+    target_seconds: int | None = None,
+) -> str:
     """Build a prompt for a reference-to-video product presenter clip."""
     product_name = _clean_text(product.get("product_name")) or "the product"
     category = _clean_text(product.get("category")) or "this category"
     platform = _clean_text(product.get("platform")) or "affiliate platform"
     angle = _clean_text(script.get("angle")).replace("_", " ") or "quick product demo"
+    notes = _clean_text(product.get("notes"))
     talking_points = _script_summary(str(script.get("script_text") or ""))
+    sequence = (
+        _hair_product_sequence(product_name, target_seconds)
+        if _is_hair_product(product_name, category, notes)
+        else _general_product_sequence(product_name, category, target_seconds)
+    )
+    duration_direction = _duration_direction(target_seconds)
 
     prompt = f"""
-Create a realistic vertical UGC-style affiliate product video.
+Create a high-retention vertical TikTok Shop UGC affiliate video ad.
 
-Scene:
-A natural-looking adult presenter is standing in a bright bathroom or bedroom vanity setup, holding the exact product shown in the reference images. The presenter talks directly to camera while showing the product in hand, turning it slightly so the packaging and shape are visible. The tone is casual, honest, and useful, like a creator explaining a product they are about to try.
+Format and retention:
+9:16 vertical video, realistic lifestyle UGC style, smooth cinematic lighting, fast but natural TikTok pacing. {duration_direction}
 
 Product:
 {product_name}
@@ -82,17 +161,22 @@ Category: {category}
 Platform context: {platform}
 Video angle: {angle}
 
-Action:
-The presenter holds the product near chest level, points to it briefly, then demonstrates the basic usage gesture in a realistic way. For hair or grooming products, show the presenter applying or miming application naturally without exaggerated transformation claims. Keep the product recognizable from the reference images.
+Reference image requirement:
+The product must look like the reference images. Do not change the bottle, packaging, label, shape, color, or product identity. Keep the product visible throughout the clip.
+
+Creative direction:
+Start with a scroll-stopping visual hook showing the problem the product solves. Show a realistic adult creator using the product naturally in a bright bathroom, bedroom, vanity, or relevant lifestyle setting. Show the product being applied or used, the texture/action of the product, and a believable desirable result.
+
+{sequence}
 
 What the presenter is saying:
 {talking_points}
 
-Style:
-Realistic handheld phone video, natural lighting, subtle camera movement, authentic creator energy, no studio commercial gloss, no floating text-heavy slides. Keep the person and product in frame. Make the product the clear focus.
+Visual style:
+Modern TikTok beauty/lifestyle UGC ad. Natural creator energy, shallow depth of field, bright clean lighting, smooth handheld movement, close-up product shots, quick satisfying cuts, authentic not corporate. Avoid stiff poses, fake smiles, random scenery, or slow generic product-only frames.
 
 Compliance:
-Include affiliate-disclosure-safe phrasing in the spoken tone such as "I may earn a commission." Avoid claims like cure, guaranteed, weight loss, medical, pain relief, before and after, cheapest, official, or FDA approved. Do not imply guaranteed results.
+Make the result believable, not magic. Do not imply guaranteed results. Avoid medical, cure, pain relief, weight loss, cheapest, official, FDA approved, or exaggerated claims. Affiliate-disclosure-safe tone is okay, such as "I may earn a commission."
 """.strip()
     return prompt[:4096]
 
@@ -182,7 +266,8 @@ def generate_replicate_presenter_video(
         )
 
     export_dir.mkdir(parents=True, exist_ok=True)
-    prompt_text = prompt or build_ai_presenter_prompt(product, script)
+    duration = int(config.get("duration", 5))
+    prompt_text = prompt or build_ai_presenter_prompt(product, script, target_seconds=duration)
     prompt_path = export_dir / "ai_presenter_prompt.txt"
     prompt_path.write_text(prompt_text, encoding="utf-8")
 
@@ -198,7 +283,6 @@ def generate_replicate_presenter_video(
             "xai/grok-imagine-r2v:b412665331cd7343f79fe14d93bb4f4e8b0d3865ae6308d27868af7dddf4420e",
         )
     )
-    duration = int(config.get("duration", 8))
     resolution = str(config.get("resolution", "720p"))
     aspect_ratio = str(config.get("aspect_ratio", "9:16"))
     timeout_seconds = int(config.get("timeout_seconds", 900))
