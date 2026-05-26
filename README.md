@@ -58,14 +58,14 @@ AffiliateVideoMachine/
 
 ## Daily workflow
 
-1. Add or edit products on the Products page.
-2. Review product scores on Overview or Products.
-3. Generate scripts on the Scripts page.
-4. Check scripts or custom text on the Compliance page.
-5. Queue approved scripts on the Export Queue page.
-6. Use **Run autonomous media pipeline** for a zero-touch pass, or run the individual asset/render steps manually.
-7. Use the TikTok page to upload the rendered MP4 as a TikTok inbox draft or direct post.
-8. Adjust scoring, compliance, render, AI video, and TikTok settings on the Settings page.
+1. Paste a product or affiliate URL on **Products -> Quick add URL**.
+2. Let the app infer product metadata, import images, generate scripts, and optionally queue the first script.
+3. Open **Export Queue** and use **Run autonomous media pipeline** for the AI video pass.
+4. Review the generated MP4.
+5. Use the TikTok page to upload the rendered MP4 as a TikTok inbox draft or direct post.
+6. Adjust scoring, compliance, render, AI video, and TikTok settings on the Settings page when needed.
+
+The manual product form still exists for corrections, but URL-first setup is the intended workflow.
 
 For the deployment and TikTok review path, read `DEPLOYMENT.md` and `TIKTOK_REVIEW.md`.
 

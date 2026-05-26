@@ -29,6 +29,18 @@ class AssetImportResult:
     source_assets_dir: Path
 
 
+@dataclass(slots=True)
+class ProductPageInspection:
+    """Metadata and image candidates found on a product URL."""
+
+    requested_url: str
+    final_url: str
+    title: str
+    commercial_metadata: dict[str, Any]
+    image_urls: list[str]
+    candidate_count: int
+
+
 def _require_dependencies() -> tuple[Any, Any]:
     """Import optional web parsing dependencies only when needed."""
     try:
@@ -329,25 +341,23 @@ def import_product_assets(
     projects_root: Path,
     max_images: int = 8,
     timeout: int = 20,
+    inspection: ProductPageInspection | None = None,
 ) -> AssetImportResult:
     """Fetch product page imagery into the product project source assets folder."""
     product_url = str(product.get("product_url") or "").strip()
     if not product_url:
         raise AssetImportError("Product URL is empty.")
 
-    requests, BeautifulSoup = _require_dependencies()
+    requests, _ = _require_dependencies()
     project_dir = create_product_project(product, projects_root)
     source_assets_dir = project_dir / "source_assets"
     source_assets_dir.mkdir(parents=True, exist_ok=True)
 
-    response = requests.get(product_url, headers=_headers(), timeout=timeout, allow_redirects=True)
-    response.raise_for_status()
-    final_url = response.url
-    html = response.text
-    soup = BeautifulSoup(html, "html.parser")
-    title = _page_title(soup)
-    commercial_metadata = extract_commercial_metadata(html, final_url, soup)
-    candidates = _candidate_urls_from_html(html, final_url, soup)
+    page = inspection or inspect_product_url(product_url, timeout=timeout)
+    final_url = page.final_url
+    title = page.title
+    commercial_metadata = page.commercial_metadata
+    candidates = page.image_urls
 
     saved_images: list[Path] = []
     skipped = 0
@@ -374,7 +384,7 @@ def import_product_assets(
         "commercial_metadata": commercial_metadata,
         "saved_images": [str(path) for path in saved_images],
         "skipped_images": skipped,
-        "candidate_count": len(candidates),
+        "candidate_count": page.candidate_count,
     }
     metadata_path = source_assets_dir / "asset_import_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -394,4 +404,30 @@ def import_product_assets(
         skipped_images=skipped,
         metadata_path=metadata_path,
         source_assets_dir=source_assets_dir,
+    )
+
+
+def inspect_product_url(product_url: str, timeout: int = 20) -> ProductPageInspection:
+    """Dereference a product URL and extract metadata plus image candidates."""
+    clean_url = product_url.strip()
+    if not clean_url:
+        raise AssetImportError("Product URL is empty.")
+
+    requests, BeautifulSoup = _require_dependencies()
+    response = requests.get(clean_url, headers=_headers(), timeout=timeout, allow_redirects=True)
+    response.raise_for_status()
+    final_url = response.url
+    html = response.text
+    soup = BeautifulSoup(html, "html.parser")
+    title = _page_title(soup)
+    commercial_metadata = extract_commercial_metadata(html, final_url, soup)
+    candidates = _candidate_urls_from_html(html, final_url, soup)
+
+    return ProductPageInspection(
+        requested_url=clean_url,
+        final_url=final_url,
+        title=title,
+        commercial_metadata=commercial_metadata,
+        image_urls=candidates,
+        candidate_count=len(candidates),
     )

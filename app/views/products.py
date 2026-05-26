@@ -4,15 +4,32 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 import pandas as pd
 import streamlit as st
 
+from app.asset_importer import AssetImportError, ProductPageInspection, import_product_assets, inspect_product_url
+from app.compliance import check_compliance
 from app.config import resolve_project_path
 from app.database import Database
 from app.project_generator import create_product_project
+from app.project_generator import save_generated_scripts
 from app.scoring import calculate_product_score
+from app.script_generator import DEFAULT_TEMPLATE_PATH, generate_scripts
+
+
+CATEGORY_KEYWORDS = [
+    ("Hair product", ["hair", "sea salt", "texture spray", "shampoo", "conditioner", "styling"]),
+    ("Skincare", ["skin", "serum", "moisturizer", "cleanser", "sunscreen"]),
+    ("Kitchen", ["kitchen", "cook", "coffee", "pan", "knife", "blender"]),
+    ("Home", ["home", "organizer", "storage", "cleaning", "decor"]),
+    ("Tech", ["charger", "phone", "usb", "camera", "bluetooth", "keyboard"]),
+    ("Fitness", ["fitness", "workout", "gym", "yoga", "training"]),
+    ("Pet", ["dog", "cat", "pet"]),
+]
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -36,6 +53,183 @@ def _status_index(options: list[str], value: str | None) -> int:
     if value in options:
         return options.index(value)
     return 0
+
+
+def _normalize_product_url(value: str) -> str:
+    """Add a scheme when a pasted product URL omits one."""
+    text = value.strip()
+    if not text:
+        return ""
+    parsed = urlparse(text)
+    if parsed.scheme:
+        return text
+    return f"https://{text}"
+
+
+def _parse_float(value: Any, default: float = 0.0, maximum: float | None = None) -> float:
+    """Parse the first reasonable decimal number from scraped metadata."""
+    if value is None:
+        return default
+    match = re.search(r"\d[\d,]*(?:\.\d+)?", str(value))
+    if not match:
+        return default
+    try:
+        parsed = float(match.group(0).replace(",", ""))
+    except ValueError:
+        return default
+    if maximum is not None:
+        parsed = min(parsed, maximum)
+    return parsed
+
+
+def _parse_int(value: Any, default: int = 0) -> int:
+    """Parse the first reasonable integer from scraped metadata."""
+    if value is None:
+        return default
+    match = re.search(r"\d[\d,]*", str(value))
+    if not match:
+        return default
+    try:
+        return int(match.group(0).replace(",", ""))
+    except ValueError:
+        return default
+
+
+def _clean_product_name(value: str) -> str:
+    """Clean a scraped page title into a usable product name."""
+    text = " ".join(value.split())
+    text = re.sub(r"\s*[:|-]\s*Amazon\.com.*$", "", text, flags=re.I)
+    text = re.sub(r"\s*\|\s*Amazon.*$", "", text, flags=re.I)
+    text = re.sub(r"\s*\|\s*TikTok.*$", "", text, flags=re.I)
+    return text[:140].strip()
+
+
+def _platform_from_url(product_url: str, platforms: list[str], override: str) -> str:
+    """Infer an affiliate platform from the URL host unless the user overrides it."""
+    if override != "Auto":
+        return override
+
+    host = urlparse(product_url).netloc.lower()
+    platform_map = [
+        ("amazon.", "Amazon"),
+        ("amzn.to", "Amazon"),
+        ("tiktok.", "TikTok Shop"),
+        ("impact.", "Impact"),
+        ("shareasale.", "ShareASale"),
+    ]
+    for token, platform in platform_map:
+        if token in host and platform in platforms:
+            return platform
+    return "Other" if "Other" in platforms else platforms[0]
+
+
+def _category_from_metadata(metadata: dict[str, Any], title: str, override: str) -> str:
+    """Infer a broad category from product text unless the user overrides it."""
+    if override.strip():
+        return override.strip()
+
+    haystack = " ".join(
+        str(metadata.get(key) or "")
+        for key in ["title", "description", "brand"]
+    )
+    haystack = f"{haystack} {title}".lower()
+    for category, keywords in CATEGORY_KEYWORDS:
+        if any(keyword in haystack for keyword in keywords):
+            return category
+    return "Uncategorized"
+
+
+def _compliance_risk_from_text(metadata: dict[str, Any], title: str) -> float:
+    """Estimate starting compliance risk from sensitive product language."""
+    haystack = " ".join(str(value or "") for value in metadata.values())
+    haystack = f"{haystack} {title}".lower()
+    risky = ["supplement", "medical", "pain", "relief", "weight loss", "cure", "before and after", "fda"]
+    return 25.0 if any(term in haystack for term in risky) else 5.0
+
+
+def _auto_product_data(
+    product_url: str,
+    inspection: ProductPageInspection | None,
+    config: dict[str, Any],
+    platform_override: str,
+    category_override: str,
+    commission_rate: float,
+) -> dict[str, Any]:
+    """Build a product record from a URL inspection with conservative defaults."""
+    defaults = config.get("defaults", {})
+    platforms = defaults.get("platforms", ["TikTok Shop", "Amazon", "Impact", "ShareASale", "Direct", "Other"])
+    metadata = inspection.commercial_metadata if inspection else {}
+    title = str(metadata.get("title") or (inspection.title if inspection else "") or "").strip()
+    parsed_url = urlparse(inspection.final_url if inspection else product_url)
+    host_name = parsed_url.netloc.replace("www.", "") or "product link"
+    product_name = _clean_product_name(title) or f"Product from {host_name}"
+    description = str(metadata.get("description") or "").strip()
+    final_url = inspection.final_url if inspection else product_url
+    image_count = len(inspection.image_urls) if inspection else 0
+
+    data = {
+        "product_name": product_name,
+        "product_url": final_url,
+        "platform": _platform_from_url(final_url, platforms, platform_override),
+        "category": _category_from_metadata(metadata, title, category_override),
+        "price": _parse_float(metadata.get("price")),
+        "commission_rate": float(commission_rate),
+        "rating": _parse_float(metadata.get("rating"), maximum=5.0),
+        "review_count": _parse_int(metadata.get("review_count")),
+        "visual_demo_score": 75.0 if image_count else 55.0,
+        "compliance_risk_score": _compliance_risk_from_text(metadata, title),
+        "notes": "\n\n".join(
+            part
+            for part in [
+                f"Auto-created from URL: {final_url}",
+                description[:1200],
+                f"Found {image_count} candidate product image(s)." if inspection else "URL inspection was not available.",
+            ]
+            if part
+        ),
+        "status": "Researching",
+    }
+    data["score"] = calculate_product_score(data, config)
+    return data
+
+
+def _generate_scripts_for_product(
+    product: dict[str, Any],
+    config: dict[str, Any],
+    db: Database,
+    projects_root: Path,
+    queue_first_script: bool,
+) -> tuple[int, int | None]:
+    """Generate scripts, run compliance checks, and optionally queue the first angle."""
+    generated_scripts = generate_scripts(product, DEFAULT_TEMPLATE_PATH)
+    save_generated_scripts(product, generated_scripts, projects_root)
+
+    script_ids: dict[str, int] = {}
+    for generated in generated_scripts:
+        result = check_compliance(generated.script_text, config)
+        script_id = db.upsert_script(int(product["id"]), generated, result.status)
+        db.add_compliance_check(
+            "script",
+            generated.script_text,
+            result,
+            product_id=int(product["id"]),
+            script_id=script_id,
+        )
+        script_ids[generated.angle] = script_id
+
+    queued_id = None
+    if queue_first_script and script_ids:
+        preferred_script_id = script_ids.get("problem_solution") or next(iter(script_ids.values()))
+        exports_root = resolve_project_path(config.get("app", {}).get("exports_path", "exports"))
+        queued_id = db.add_export_item(
+            product_id=int(product["id"]),
+            script_id=preferred_script_id,
+            export_type="Short-form video script",
+            status="Planned",
+            destination=str(exports_root),
+            notes="Auto-queued from quick URL setup.",
+        )
+    return len(generated_scripts), queued_id
 
 
 def _product_form(prefix: str, config: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -153,7 +347,93 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
     st.caption("Track affiliate products and score their short-form video potential.")
 
     projects_root = resolve_project_path(config.get("app", {}).get("projects_path", "data/projects"))
-    add_tab, edit_tab, table_tab = st.tabs(["Add product", "Edit product", "Product list"])
+    quick_tab, add_tab, edit_tab, table_tab = st.tabs(["Quick add URL", "Manual add", "Edit product", "Product list"])
+
+    with quick_tab:
+        st.write("Paste one affiliate or product URL. The app will fill what it can and keep the manual fields optional.")
+        defaults = config.get("defaults", {})
+        platforms = defaults.get("platforms", ["TikTok Shop", "Amazon", "Impact", "ShareASale", "Direct", "Other"])
+        with st.form("quick_add_product_form"):
+            product_url = st.text_input("Product or affiliate URL")
+            with st.expander("Optional overrides", expanded=False):
+                platform_override = st.selectbox("Platform", ["Auto"] + platforms)
+                category_override = st.text_input("Category override")
+                commission_rate = st.number_input(
+                    "Commission rate if known (%)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=0.0,
+                    step=0.5,
+                )
+                max_images = st.slider("Images to import", min_value=1, max_value=12, value=10, step=1)
+                auto_generate_scripts = st.checkbox("Generate scripts automatically", value=True)
+                queue_first_script = st.checkbox("Add the first script to Export Queue", value=True)
+            submitted = st.form_submit_button("Auto-create product")
+
+        if submitted:
+            clean_product_url = _normalize_product_url(product_url)
+            if not clean_product_url:
+                st.error("Paste a product or affiliate URL first.")
+            else:
+                try:
+                    inspection: ProductPageInspection | None = None
+                    with st.spinner("Reading product URL and extracting product details..."):
+                        try:
+                            inspection = inspect_product_url(clean_product_url)
+                        except Exception as exc:
+                            logger.warning("Product URL inspection failed: %s", exc)
+                            st.warning("The URL could not be fully inspected, so the app will create a basic product record.")
+
+                        data = _auto_product_data(
+                            product_url=clean_product_url,
+                            inspection=inspection,
+                            config=config,
+                            platform_override=platform_override,
+                            category_override=category_override,
+                            commission_rate=commission_rate,
+                        )
+                        product_id = db.create_product(data)
+                        product = db.get_product(product_id)
+                        if not product:
+                            raise RuntimeError("Product was created but could not be reloaded.")
+                        create_product_project(product, Path(projects_root))
+
+                        imported_count = 0
+                        try:
+                            import_result = import_product_assets(
+                                product,
+                                Path(projects_root),
+                                max_images=max_images,
+                                inspection=inspection,
+                            )
+                            imported_count = len(import_result.saved_images)
+                        except AssetImportError as exc:
+                            logger.warning("Quick add asset import warning for product %s: %s", product_id, exc)
+                        except Exception:
+                            logger.exception("Quick add asset import failed for product %s", product_id)
+
+                        generated_count = 0
+                        queue_id = None
+                        if auto_generate_scripts:
+                            generated_count, queue_id = _generate_scripts_for_product(
+                                product,
+                                config,
+                                db,
+                                Path(projects_root),
+                                queue_first_script=queue_first_script,
+                            )
+                            db.update_product(int(product["id"]), {"status": "Scripted"})
+
+                    st.success(
+                        f"Created product #{product_id}. Imported {imported_count} image(s). "
+                        f"Generated {generated_count} script(s)."
+                    )
+                    if queue_id:
+                        st.info(f"Queued the first script for export as item #{queue_id}. Open Export Queue next.")
+                    logger.info("Quick-created product %s from URL", product_id)
+                except Exception:
+                    logger.exception("Quick product setup failed")
+                    st.error("Quick setup could not finish. Check logs/errors.log for details.")
 
     with add_tab:
         with st.form("add_product_form"):
