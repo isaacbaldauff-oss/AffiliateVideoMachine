@@ -229,7 +229,7 @@ def generate_replicate_presenter_video(
         json=payload,
         timeout=120,
     )
-    if response.status_code >= 400 and ":" in model_version:
+    if response.status_code >= 400 and response.status_code != 429 and ":" in model_version:
         retry_payload = dict(payload)
         retry_payload["version"] = model_version.rsplit(":", 1)[1]
         response = requests.post(

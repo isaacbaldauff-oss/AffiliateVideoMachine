@@ -158,7 +158,7 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
                 "Default AI clip seconds",
                 min_value=1,
                 max_value=10,
-                value=int(ai_video.get("duration", 8)),
+                value=int(ai_video.get("duration", 5)),
                 step=1,
             )
             ai_video["max_reference_images"] = st.number_input(
@@ -183,6 +183,17 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
                 ["720p", "480p"],
                 index=0 if str(ai_video.get("resolution", "720p")) == "720p" else 1,
             )
+        ai_video["estimated_cost_per_output_second"] = st.number_input(
+            "Estimated AI cost per output second",
+            min_value=0.0,
+            value=float(ai_video.get("estimated_cost_per_output_second", 0.05)),
+            step=0.01,
+            format="%.2f",
+        )
+        ai_video["require_paid_generation_confirmation"] = st.checkbox(
+            "Require confirmation before starting paid AI video jobs",
+            value=bool(ai_video.get("require_paid_generation_confirmation", True)),
+        )
 
         st.subheader("TikTok API")
         tiktok_config = updated.setdefault("tiktok", {})

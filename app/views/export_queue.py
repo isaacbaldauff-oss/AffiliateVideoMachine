@@ -41,6 +41,23 @@ def _queue_table(rows: list[dict[str, Any]]) -> None:
     st.dataframe(pd.DataFrame(display), use_container_width=True, hide_index=True)
 
 
+def _ai_default_duration(ai_config: dict[str, Any]) -> int:
+    """Return the configured AI clip duration bounded to the provider range."""
+    return max(1, min(10, int(ai_config.get("duration", 5))))
+
+
+def _estimated_ai_cost(ai_config: dict[str, Any], duration: int) -> float:
+    """Estimate provider cost from configured per-second pricing."""
+    per_second = float(ai_config.get("estimated_cost_per_output_second", 0.05))
+    return max(0.0, per_second) * max(0, duration)
+
+
+def _already_has_ai_video(item: dict[str, Any]) -> bool:
+    """Return whether this queue item appears to have a rendered AI MP4 already."""
+    destination = Path(str(item.get("destination") or ""))
+    return item.get("status") == "AI Rendered" and destination.suffix.lower() == ".mp4"
+
+
 def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None:
     """Render export queue add and update workflows."""
     st.title("Export Queue")
@@ -123,6 +140,10 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
 
     token_env = str(ai_config.get("replicate_api_token_env", "REPLICATE_API_TOKEN"))
     env_token = os.getenv(token_env, "")
+    default_ai_duration = _ai_default_duration(ai_config)
+    default_ai_cost = _estimated_ai_cost(ai_config, default_ai_duration)
+    require_paid_confirmation = bool(ai_config.get("require_paid_generation_confirmation", True))
+    already_has_ai_video = _already_has_ai_video(item)
 
     st.subheader("Zero-touch orchestration")
     st.write(
@@ -139,14 +160,48 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
         type="password",
         help=f"Uses `{token_env}` when set. If AI-only is checked, a token is required.",
     )
-    orchestration_api_token = orchestration_token.strip() or env_token
-    if st.button("Run autonomous media pipeline"):
+    raw_orchestration_api_token = orchestration_token.strip() or env_token
+    st.caption(
+        f"Paid AI cost guard: this action can start at most one Replicate video job. "
+        f"Estimated cost at the current {default_ai_duration}-second default is about ${default_ai_cost:.2f}."
+    )
+    if already_has_ai_video:
+        st.warning("This queue item already has an AI-rendered MP4. Regenerating may create another paid provider job.")
+    allow_orchestration_regeneration = False
+    if already_has_ai_video:
+        allow_orchestration_regeneration = st.checkbox(
+            "Allow a second paid AI generation for this queue item",
+            value=False,
+            key=f"allow_orchestration_regen_{item['id']}",
+        )
+    orchestration_paid_confirmed = st.checkbox(
+        "I approve starting one paid Replicate AI video generation for this queue item",
+        value=False,
+        key=f"approve_orchestration_paid_ai_{item['id']}",
+        disabled=not require_paid_confirmation,
+    )
+    if not require_paid_confirmation:
+        orchestration_paid_confirmed = True
+    orchestration_api_token = raw_orchestration_api_token if orchestration_paid_confirmed else ""
+    orchestration_disabled = bool(raw_orchestration_api_token) and (
+        not orchestration_paid_confirmed or (already_has_ai_video and not allow_orchestration_regeneration)
+    )
+    if st.button("Run autonomous media pipeline", disabled=orchestration_disabled):
         try:
             if not selected_product or not selected_script:
                 st.error("This queue item is missing its linked product or script.")
                 return
-            if require_ai_video and not orchestration_api_token:
+            if raw_orchestration_api_token and require_paid_confirmation and not orchestration_paid_confirmed:
+                st.error("Confirm the paid AI generation checkbox before starting a Replicate video job.")
+                return
+            if raw_orchestration_api_token and already_has_ai_video and not allow_orchestration_regeneration:
+                st.error("This item already has an AI video. Check the regeneration box before creating another paid job.")
+                return
+            if require_ai_video and not raw_orchestration_api_token:
                 st.error(f"AI-only mode needs a Replicate API token. Set {token_env} or paste one above.")
+                return
+            if require_ai_video and not orchestration_api_token:
+                st.error("AI-only mode needs your paid generation confirmation before it can start.")
                 return
 
             start_status = "AI Rendering" if orchestration_api_token else "Rendering"
@@ -224,7 +279,7 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
         "AI clip seconds",
         min_value=1,
         max_value=10,
-        value=int(ai_config.get("duration", 8)),
+        value=default_ai_duration,
         step=1,
     )
     ai_resolution = ai_col2.selectbox(
@@ -245,10 +300,37 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
     else:
         st.info("This queue item needs a linked product and script before AI video generation.")
 
-    if st.button("Generate AI presenter video"):
+    manual_ai_cost = _estimated_ai_cost(ai_config, ai_duration)
+    st.caption(f"Estimated Replicate cost for this manual AI job: about ${manual_ai_cost:.2f}.")
+    allow_manual_regeneration = False
+    if already_has_ai_video:
+        allow_manual_regeneration = st.checkbox(
+            "Allow manual AI regeneration for this item",
+            value=False,
+            key=f"allow_manual_regen_{item['id']}",
+        )
+    manual_paid_confirmed = st.checkbox(
+        "I approve starting one paid Replicate AI presenter video job",
+        value=False,
+        key=f"approve_manual_paid_ai_{item['id']}",
+        disabled=not require_paid_confirmation,
+    )
+    if not require_paid_confirmation:
+        manual_paid_confirmed = True
+    manual_disabled = require_paid_confirmation and (
+        not manual_paid_confirmed or (already_has_ai_video and not allow_manual_regeneration)
+    )
+
+    if st.button("Generate AI presenter video", disabled=manual_disabled):
         try:
             if not selected_product or not selected_script:
                 st.error("This queue item is missing its linked product or script.")
+                return
+            if require_paid_confirmation and not manual_paid_confirmed:
+                st.error("Confirm the paid AI generation checkbox before starting a Replicate video job.")
+                return
+            if already_has_ai_video and not allow_manual_regeneration:
+                st.error("This item already has an AI video. Check the regeneration box before creating another paid job.")
                 return
             if not api_token:
                 st.error(f"Add a Replicate API token or set the {token_env} environment variable.")
