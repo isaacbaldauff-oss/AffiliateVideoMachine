@@ -19,6 +19,13 @@ from app.project_generator import create_product_project
 from app.project_generator import save_generated_scripts
 from app.scoring import calculate_product_score
 from app.script_generator import DEFAULT_TEMPLATE_PATH, generate_scripts
+from app.tiktok_shop import (
+    PRODUCT_BOX_STATUS_OPTIONS,
+    extract_tiktok_shop_product_id,
+    is_tiktok_shop_url,
+    product_box_status_for_platform,
+    tiktok_shop_box_notes,
+)
 
 
 CATEGORY_KEYWORDS = [
@@ -111,9 +118,12 @@ def _platform_from_url(product_url: str, platforms: list[str], override: str) ->
 
     host = urlparse(product_url).netloc.lower()
     platform_map = [
+        ("shop.tiktok.com", "TikTok Shop"),
+        ("tiktokshop", "TikTok Shop"),
+        ("tiktok.", "TikTok Shop"),
+        ("vt.tiktok.com", "TikTok Shop"),
         ("amazon.", "Amazon"),
         ("amzn.to", "Amazon"),
-        ("tiktok.", "TikTok Shop"),
         ("impact.", "Impact"),
         ("shareasale.", "ShareASale"),
     ]
@@ -166,11 +176,14 @@ def _auto_product_data(
     description = str(metadata.get("description") or "").strip()
     final_url = inspection.final_url if inspection else product_url
     image_count = len(inspection.image_urls) if inspection else 0
+    platform = _platform_from_url(final_url, platforms, platform_override)
+    tiktok_product_id = extract_tiktok_shop_product_id(final_url) if platform == "TikTok Shop" else ""
+    product_box_status = product_box_status_for_platform(platform)
 
     data = {
         "product_name": product_name,
         "product_url": final_url,
-        "platform": _platform_from_url(final_url, platforms, platform_override),
+        "platform": platform,
         "category": _category_from_metadata(metadata, title, category_override),
         "price": _parse_float(metadata.get("price")),
         "commission_rate": float(commission_rate),
@@ -178,6 +191,11 @@ def _auto_product_data(
         "review_count": _parse_int(metadata.get("review_count")),
         "visual_demo_score": 75.0 if image_count else 55.0,
         "compliance_risk_score": _compliance_risk_from_text(metadata, title),
+        "tiktok_shop_product_id": tiktok_product_id,
+        "product_box_status": product_box_status,
+        "product_box_notes": tiktok_shop_box_notes(tiktok_product_id, final_url)
+        if platform == "TikTok Shop"
+        else "Generic affiliate product. This will not create the native TikTok Shop product box.",
         "notes": "\n\n".join(
             part
             for part in [
@@ -297,6 +315,24 @@ def _product_form(prefix: str, config: dict[str, Any], existing: dict[str, Any] 
         index=_status_index(status_options, existing.get("status")),
         key=f"{prefix}_status",
     )
+    with st.expander("TikTok Shop product box", expanded=False):
+        tiktok_shop_product_id = st.text_input(
+            "TikTok Shop product ID",
+            value=str(existing.get("tiktok_shop_product_id") or ""),
+            key=f"{prefix}_tiktok_shop_product_id",
+        )
+        product_box_status = st.selectbox(
+            "Product box status",
+            PRODUCT_BOX_STATUS_OPTIONS,
+            index=_status_index(PRODUCT_BOX_STATUS_OPTIONS, existing.get("product_box_status") or "Needs product box"),
+            key=f"{prefix}_product_box_status",
+        )
+        product_box_notes = st.text_area(
+            "Product box notes",
+            value=str(existing.get("product_box_notes") or ""),
+            height=90,
+            key=f"{prefix}_product_box_notes",
+        )
     notes = st.text_area("Notes", value=str(existing.get("notes") or ""), height=120, key=f"{prefix}_notes")
 
     data = {
@@ -310,6 +346,9 @@ def _product_form(prefix: str, config: dict[str, Any], existing: dict[str, Any] 
         "review_count": int(review_count),
         "visual_demo_score": float(visual_demo_score),
         "compliance_risk_score": float(compliance_risk_score),
+        "tiktok_shop_product_id": tiktok_shop_product_id.strip(),
+        "product_box_status": product_box_status,
+        "product_box_notes": product_box_notes.strip(),
         "notes": notes.strip(),
         "status": status,
     }
@@ -331,6 +370,8 @@ def _show_product_table(products: list[dict[str, Any]]) -> None:
             "Category": row["category"],
             "Price": row["price"],
             "Commission %": row["commission_rate"],
+            "Box": row.get("product_box_status") or "",
+            "TikTok Product ID": row.get("tiktok_shop_product_id") or "",
             "Rating": row["rating"],
             "Reviews": row["review_count"],
             "Score": row["score"],
@@ -344,17 +385,17 @@ def _show_product_table(products: list[dict[str, Any]]) -> None:
 def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None:
     """Render product add, edit, and list workflows."""
     st.title("Products")
-    st.caption("Track affiliate products and score their short-form video potential.")
+    st.caption("TikTok Shop-first product intake for shoppable affiliate videos.")
 
     projects_root = resolve_project_path(config.get("app", {}).get("projects_path", "data/projects"))
     quick_tab, add_tab, edit_tab, table_tab = st.tabs(["Quick add URL", "Manual add", "Edit product", "Product list"])
 
     with quick_tab:
-        st.write("Paste one affiliate or product URL. The app will fill what it can and keep the manual fields optional.")
+        st.write("Paste one TikTok Shop product URL. The app fills what it can, generates scripts, and queues the first draft.")
         defaults = config.get("defaults", {})
         platforms = defaults.get("platforms", ["TikTok Shop", "Amazon", "Impact", "ShareASale", "Direct", "Other"])
         with st.form("quick_add_product_form"):
-            product_url = st.text_input("Product or affiliate URL")
+            product_url = st.text_input("TikTok Shop product URL")
             with st.expander("Optional overrides", expanded=False):
                 platform_override = st.selectbox("Platform", ["Auto"] + platforms)
                 category_override = st.text_input("Category override")
@@ -378,6 +419,11 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
                 try:
                     inspection: ProductPageInspection | None = None
                     with st.spinner("Reading product URL and extracting product details..."):
+                        if not is_tiktok_shop_url(clean_product_url):
+                            st.warning(
+                                "This does not look like a TikTok Shop product link. "
+                                "The app will still create a product, but it may not support the native TikTok product box."
+                            )
                         try:
                             inspection = inspect_product_url(clean_product_url)
                         except Exception as exc:

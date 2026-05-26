@@ -1,10 +1,11 @@
 # AffiliateVideoMachine
 
-A Streamlit dashboard for managing an affiliate short-form video production pipeline, from product research through AI video generation and official TikTok upload workflows.
+A Streamlit dashboard for managing a TikTok Shop affiliate short-form video pipeline, from product intake through AI video generation and official TikTok draft upload workflows.
 
 ## What v1 includes
 
 - Product management with scoring.
+- TikTok Shop-first product intake with product-box status tracking.
 - Configurable scoring weights in `config.yaml`.
 - Local script generation with five reusable video angles per product.
 - Compliance checks for risky claims and affiliate disclosures.
@@ -58,12 +59,13 @@ AffiliateVideoMachine/
 
 ## Daily workflow
 
-1. Paste a product or affiliate URL on **Products -> Quick add URL**.
-2. Let the app infer product metadata, import images, generate scripts, and optionally queue the first script.
+1. Paste a TikTok Shop product URL on **Products -> Quick add URL**.
+2. Let the app infer product metadata, import images, generate scripts, track product-box status, and optionally queue the first script.
 3. Open **Export Queue** and use **Run autonomous media pipeline** for the AI video pass.
 4. Review the generated MP4.
-5. Use the TikTok page to upload the rendered MP4 as a TikTok inbox draft or direct post.
-6. Adjust scoring, compliance, render, AI video, and TikTok settings on the Settings page when needed.
+5. Use the TikTok page to upload the rendered MP4 as a TikTok inbox draft.
+6. Open the TikTok app, edit the inbox draft, choose **Add Link -> Products**, attach the TikTok Shop product box, then post.
+7. Adjust scoring, compliance, render, AI video, and TikTok settings on the Settings page when needed.
 
 The manual product form still exists for corrections, but URL-first setup is the intended workflow.
 
@@ -114,15 +116,16 @@ On the Export Queue page, **Run autonomous media pipeline** performs the full fr
 
 Some retailers block automated asset access. In that case, the framework still creates the plan. In AI-only mode it stops until usable reference images and a provider token are available. If fallback mode is allowed, it can create an image-composited MP4, but that is not the same as a generated presenter video.
 
-## TikTok publishing
+## TikTok Shop Publishing
 
-The TikTok page uses TikTok's official Content Posting API. You need:
+The TikTok page uses TikTok's official Content Posting API for draft upload. For clickable TikTok Shop product boxes, use the inbox draft workflow:
 
 - A TikTok Developer app.
 - Login Kit configured with an HTTPS redirect URI.
 - Content Posting API added to the app.
-- Approved `video.upload` and/or `video.publish` scopes.
+- Approved `video.upload` scope.
 - A TikTok user to authorize the app.
+- TikTok Shop affiliate access to the product you want to attach.
 
 For local testing, set credentials before launching Streamlit:
 
@@ -141,7 +144,8 @@ Workflow:
 2. Open the generated TikTok authorization URL.
 3. TikTok redirects back to the deployed dashboard. The app captures the callback code automatically.
 4. Open **TikTok -> Accounts** and query creator info.
-5. Open **TikTok -> Publish**, select a rendered MP4, review caption/disclosure/privacy, then send to TikTok.
-6. Open **TikTok -> Status** to refresh the TikTok processing state.
+5. Open **TikTok -> Publish**, select a rendered MP4, review caption/disclosure, then upload it as an inbox draft.
+6. Open TikTok on your phone, open the draft notification, attach the product through **Add Link -> Products**, then post.
+7. Return to the app and mark the product box status as attached/posted if needed.
 
-Direct posts require TikTok approval and creator consent. Unaudited apps may be restricted to private/`SELF_ONLY` posting. TikTok's public Content Posting API does not expose a general affiliate product-link attachment field; attaching a TikTok Shop affiliate product may still need TikTok Shop or Creator Center tooling.
+Direct posts require TikTok approval and creator consent. More importantly, TikTok's public Content Posting API does not expose a normal field for attaching the native TikTok Shop affiliate product box. For shoppable affiliate videos, use inbox draft upload and attach the product in TikTok before posting.

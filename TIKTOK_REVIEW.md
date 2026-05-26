@@ -8,24 +8,24 @@ AffiliateVideoMachine
 
 ## App purpose
 
-AffiliateVideoMachine helps a creator generate, review, and publish short-form affiliate product videos. The app imports product metadata and product imagery, generates compliant video ad scripts, creates AI-assisted presenter video drafts through Replicate, adds affiliate and AI content disclosures, and lets the authorized creator upload the reviewed MP4 to TikTok as a draft or direct post.
+AffiliateVideoMachine helps a creator generate and review TikTok Shop affiliate product videos. The app imports TikTok Shop product metadata and imagery, generates compliant video ad scripts, creates AI-assisted presenter video drafts through Replicate, adds affiliate and AI content disclosures, and lets the authorized creator upload the reviewed MP4 to TikTok as an inbox draft. The creator then attaches the TikTok Shop product link inside TikTok before posting.
 
 ## User flow
 
-1. The creator adds a product URL and product details.
-2. The app scores the product and generates script angles.
-3. The creator adds a script to the export queue.
-4. The creator runs the AI media pipeline to generate a vertical MP4.
-5. The creator reviews the video, caption, affiliate disclosure, commercial disclosure, and AI-generated content disclosure.
-6. The creator connects TikTok with Login Kit.
-7. The creator uploads the reviewed MP4 to TikTok as a draft or direct post.
-8. The app displays TikTok processing status.
+1. The creator pastes a TikTok Shop product URL.
+2. The app imports product metadata/images, scores the product, generates script angles, and queues a draft.
+3. The creator runs the AI media pipeline to generate a vertical MP4.
+4. The creator reviews the video, caption, affiliate disclosure, commercial disclosure, and AI-generated content disclosure.
+5. The creator connects TikTok with Login Kit.
+6. The creator uploads the reviewed MP4 to TikTok as an inbox draft.
+7. The creator opens TikTok, attaches the TikTok Shop product through Add Link -> Products, and posts from TikTok.
+8. The app displays TikTok upload status and tracks product-box workflow status.
 
 ## Requested scopes
 
 - `user.info.basic`: used to identify the connected creator account and display basic account context.
-- `video.upload`: used to send reviewed videos to the creator's TikTok inbox as drafts.
-- `video.publish`: used only when the creator chooses direct post, grants consent, and the app has TikTok approval.
+- `video.upload`: used to send reviewed TikTok Shop affiliate videos to the creator's TikTok inbox as drafts.
+- `video.publish`: optional future scope for direct posts that do not need product-box attachment. The TikTok Shop affiliate workflow prioritizes inbox draft upload because the creator attaches the product box inside TikTok.
 
 ## Data handling
 
@@ -33,7 +33,7 @@ The app stores TikTok access and refresh tokens server-side in the app database.
 
 ## Publishing controls
 
-The app does not publish automatically without creator action. Before sending to TikTok, the creator must review the rendered video, review the caption, choose the publishing mode, choose available privacy settings for direct posts, and check an explicit consent box.
+The app does not publish automatically without creator action. Before sending to TikTok, the creator must review the rendered video, review the caption, and check an explicit consent box. For TikTok Shop affiliate videos, the app uploads an inbox draft; final posting and product-box attachment happen inside TikTok.
 
 ## Commercial and AI disclosure
 
@@ -64,4 +64,5 @@ Do not use `localhost` for TikTok review. Localhost is only for development.
 - Show TikTok Connect flow.
 - Show creator info query.
 - Show upload to inbox draft.
+- Show that the creator attaches the TikTok Shop product box in TikTok after draft upload.
 - Show status refresh.

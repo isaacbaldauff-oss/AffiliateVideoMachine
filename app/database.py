@@ -23,6 +23,9 @@ PRODUCT_FIELDS = [
     "review_count",
     "visual_demo_score",
     "compliance_risk_score",
+    "tiktok_shop_product_id",
+    "product_box_status",
+    "product_box_notes",
     "notes",
     "status",
     "score",
@@ -69,6 +72,9 @@ class Database:
                     review_count INTEGER DEFAULT 0,
                     visual_demo_score REAL DEFAULT 50,
                     compliance_risk_score REAL DEFAULT 0,
+                    tiktok_shop_product_id TEXT,
+                    product_box_status TEXT DEFAULT 'Needs product box',
+                    product_box_notes TEXT,
                     notes TEXT,
                     status TEXT DEFAULT 'Researching',
                     score REAL DEFAULT 0,
@@ -159,6 +165,18 @@ class Database:
                 );
                 """
             )
+            self._ensure_column(connection, "products", "tiktok_shop_product_id", "TEXT")
+            self._ensure_column(connection, "products", "product_box_status", "TEXT DEFAULT 'Needs product box'")
+            self._ensure_column(connection, "products", "product_box_notes", "TEXT")
+
+    def _ensure_column(self, connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        """Add a SQLite column when upgrading an existing local database."""
+        columns = {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def create_product(self, data: dict[str, Any]) -> int:
         """Insert a product and return its ID."""
@@ -201,9 +219,9 @@ class Database:
         query = "SELECT * FROM products WHERE 1 = 1"
         params: list[Any] = []
         if search:
-            query += " AND (product_name LIKE ? OR category LIKE ? OR platform LIKE ?)"
+            query += " AND (product_name LIKE ? OR category LIKE ? OR platform LIKE ? OR tiktok_shop_product_id LIKE ?)"
             needle = f"%{search}%"
-            params.extend([needle, needle, needle])
+            params.extend([needle, needle, needle, needle])
         if status != "All":
             query += " AND status = ?"
             params.append(status)
@@ -362,6 +380,10 @@ class Database:
                 SELECT
                     export_queue.*,
                     products.product_name,
+                    products.product_url,
+                    products.platform,
+                    products.tiktok_shop_product_id,
+                    products.product_box_status,
                     scripts.angle,
                     scripts.title
                 FROM export_queue

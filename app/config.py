@@ -22,7 +22,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "error_log_file": "logs/errors.log",
     },
     "defaults": {
-        "status_options": ["Researching", "Approved", "Scripted", "Needs Review", "Archived"],
+        "status_options": [
+            "Researching",
+            "Approved",
+            "Scripted",
+            "Ready to Upload",
+            "Draft Uploaded",
+            "Product Box Attached",
+            "Posted",
+            "Needs Review",
+            "Archived",
+        ],
         "export_status_options": [
             "Planned",
             "Ready",

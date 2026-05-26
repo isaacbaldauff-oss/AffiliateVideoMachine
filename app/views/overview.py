@@ -14,7 +14,7 @@ from app.database import Database
 def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None:
     """Render top-level pipeline metrics and recent work."""
     st.title("Overview")
-    st.caption("Local pipeline health, product quality, and production readiness.")
+    st.caption("TikTok Shop product intake, AI video readiness, and draft upload status.")
 
     stats = db.dashboard_stats()
     compliance_counts = stats["compliance_counts"]
@@ -38,6 +38,7 @@ def render(config: dict[str, Any], db: Database, logger: logging.Logger) -> None
                     "Platform": row["platform"],
                     "Category": row["category"],
                     "Score": row["score"],
+                    "Product Box": row.get("product_box_status") or "",
                     "Status": row["status"],
                 }
                 for row in products[:10]

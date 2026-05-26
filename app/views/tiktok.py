@@ -83,9 +83,16 @@ def _video_queue_options(db: Database) -> dict[str, dict[str, Any]]:
         path = Path(destination)
         if path.suffix.lower() != ".mp4" or not path.exists():
             continue
-        label = f"#{row['id']} - {row.get('product_name') or 'Untitled'} - {path.name}"
+        box_status = row.get("product_box_status") or ""
+        box_suffix = f" - {box_status}" if box_status else ""
+        label = f"#{row['id']} - {row.get('product_name') or 'Untitled'}{box_suffix} - {path.name}"
         options[label] = row
     return options
+
+
+def _is_tiktok_shop_product(product: dict[str, Any]) -> bool:
+    """Return whether the selected product should use TikTok Shop draft workflow."""
+    return str(product.get("platform") or "") == "TikTok Shop"
 
 
 def _history_table(rows: list[dict[str, Any]]) -> None:
@@ -248,7 +255,7 @@ def _render_account_tab(config: dict[str, Any], db: Database, logger: logging.Lo
 
 def _render_publish_tab(config: dict[str, Any], db: Database, logger: logging.Logger) -> None:
     """Render TikTok upload/direct post workflow."""
-    st.subheader("Publish or Upload Draft")
+    st.subheader("TikTok Shop Draft Upload")
     accounts = db.list_tiktok_accounts()
     video_options = _video_queue_options(db)
     if not accounts:
@@ -268,6 +275,7 @@ def _render_publish_tab(config: dict[str, Any], db: Database, logger: logging.Lo
     product = db.get_product(int(queue_row["product_id"])) if queue_row.get("product_id") else {}
     script = db.get_script(int(queue_row["script_id"])) if queue_row.get("script_id") else {}
     caption = build_tiktok_caption(product or {}, script or {})
+    is_tiktok_shop = _is_tiktok_shop_product(product or {})
 
     creator_info = json.loads(account.get("creator_info") or "{}")
     if not creator_info:
@@ -278,10 +286,21 @@ def _render_publish_tab(config: dict[str, Any], db: Database, logger: logging.Lo
     st.write(f"Video: `{video_path}`")
     if max_duration:
         st.caption(f"TikTok creator max duration: {max_duration} seconds")
+    if is_tiktok_shop:
+        product_id = str(product.get("tiktok_shop_product_id") or "").strip()
+        st.success("TikTok Shop product detected. Use inbox draft upload, then attach the product box in the TikTok app.")
+        if product_id:
+            st.write(f"TikTok Shop product ID: `{product_id}`")
+        st.write("After upload: open TikTok inbox notification -> edit draft -> Add Link -> Products -> choose this product -> post.")
+    else:
+        st.warning("This product is not marked as TikTok Shop, so it probably will not get the native clickable product box.")
 
     upload_mode = st.radio(
         "TikTok mode",
-        ["Upload to TikTok inbox draft", "Direct post to TikTok"],
+        [
+            "Upload to TikTok inbox draft (recommended for product box)",
+            "Direct post to TikTok (no product box attachment here)",
+        ],
         horizontal=True,
     )
     edited_caption = st.text_area("Caption", value=caption, height=150, max_chars=2200)
@@ -290,7 +309,7 @@ def _render_publish_tab(config: dict[str, Any], db: Database, logger: logging.Lo
     disable_comment = False
     disable_duet = False
     disable_stitch = False
-    if upload_mode == "Direct post to TikTok":
+    if upload_mode == "Direct post to TikTok (no product box attachment here)":
         privacy_choice = st.selectbox("Privacy", ["Choose privacy"] + list(privacy_options), index=0)
         privacy_level = "" if privacy_choice == "Choose privacy" else privacy_choice
         creator_comment_disabled = bool(creator_info.get("comment_disabled", False))
@@ -311,15 +330,19 @@ def _render_publish_tab(config: dict[str, Any], db: Database, logger: logging.Lo
 
     if st.button("Send to TikTok", disabled=not consent):
         try:
-            if upload_mode == "Direct post to TikTok" and not privacy_level:
+            is_direct_post = upload_mode == "Direct post to TikTok (no product box attachment here)"
+            if is_direct_post and is_tiktok_shop:
+                st.error("Use inbox draft upload for TikTok Shop product-box videos. Direct post cannot attach the product box here.")
+                return
+            if is_direct_post and not privacy_level:
                 st.error("Choose a privacy level before direct posting.")
                 return
-            if upload_mode == "Direct post to TikTok" and not (branded_content or your_brand):
+            if is_direct_post and not (branded_content or your_brand):
                 st.error("Commercial content disclosure requires at least one disclosure type.")
                 return
 
             access_token = account["access_token"]
-            if upload_mode == "Upload to TikTok inbox draft":
+            if not is_direct_post:
                 init_data = initialize_inbox_upload(access_token, video_path)
                 mode = "inbox"
             else:
@@ -366,7 +389,21 @@ def _render_publish_tab(config: dict[str, Any], db: Database, logger: logging.Lo
                     "response_json": status_data,
                 }
             )
+            if mode == "inbox" and product:
+                db.update_product(
+                    int(product["id"]),
+                    {
+                        "status": "Draft Uploaded",
+                        "product_box_status": "Draft uploaded",
+                        "product_box_notes": (
+                            "Draft uploaded to TikTok inbox. Next manual step in TikTok app: "
+                            "open draft -> Add Link -> Products -> attach the TikTok Shop product box -> post."
+                        ),
+                    },
+                )
             st.success(f"Sent to TikTok. Tracking record #{post_id}.")
+            if mode == "inbox" and is_tiktok_shop:
+                st.info("Now finish in TikTok: open the inbox draft, attach the TikTok Shop product box, then post.")
             st.json(status_data)
             logger.info("Uploaded TikTok video for queue item %s with publish_id %s", queue_row["id"], publish_id)
         except Exception:

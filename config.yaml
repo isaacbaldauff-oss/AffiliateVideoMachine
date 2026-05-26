@@ -11,6 +11,10 @@ defaults:
     - Researching
     - Approved
     - Scripted
+    - Ready to Upload
+    - Draft Uploaded
+    - Product Box Attached
+    - Posted
     - Needs Review
     - Archived
   export_status_options:
